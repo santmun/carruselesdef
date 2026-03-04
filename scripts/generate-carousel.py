@@ -20,7 +20,6 @@ import sys
 import json
 import time
 import re
-import shutil
 import argparse
 import requests
 from pathlib import Path
@@ -37,10 +36,6 @@ PROJECT_ROOT = Path(__file__).parent.parent
 OUTPUTS_DIR = PROJECT_ROOT / "outputs" / "bundles"
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 TEMPLATES_DIR = PROJECT_ROOT / "templates"
-
-# Google Drive - Carpeta de carruseles (opcional, configurar en .env)
-GOOGLE_DRIVE_PATH = os.environ.get("GOOGLE_DRIVE_CAROUSEL_PATH", "")
-GOOGLE_DRIVE_CAROUSEL = Path(GOOGLE_DRIVE_PATH) if GOOGLE_DRIVE_PATH else None
 
 # API Kie AI
 KIE_API_BASE = "https://api.kie.ai/api/v1/jobs"
@@ -235,6 +230,13 @@ def download_asset_from_url(url: str, entity: str, assets_dir: Path) -> Optional
         return None
 
 
+def is_reference_image(entity_name: Optional[str]) -> bool:
+    """Determina si un asset es una imagen de referencia (no un logo/entidad)."""
+    if not entity_name:
+        return False
+    return entity_name == "portada-ref" or entity_name.startswith("ref-")
+
+
 def generate_creative_integration_prompt(
     slide_type: str,
     title: str,
@@ -248,7 +250,7 @@ def generate_creative_integration_prompt(
     Adapta la integración según:
     - Tipo de slide (portada, contenido, cierre)
     - Tema del slide
-    - Entidad detectada
+    - Entidad detectada (logo) o imagen de referencia
     - Si hay asset disponible
     """
 
@@ -265,7 +267,7 @@ Minimalist, friendly, educational aesthetic.
 """
 
     if slide_type == "portada":
-        if has_asset and entity and entity == "portada-ref":
+        if has_asset and entity and is_reference_image(entity):
             # Portada con imagen de REFERENCIA (no logo)
             return f"""{base_style}
 
@@ -373,7 +375,42 @@ COMPOSITION:
 """
 
     elif slide_type == "contenido":
-        if has_asset and entity:
+        if has_asset and entity and is_reference_image(entity):
+            # Contenido con imagen de REFERENCIA (inspiración visual)
+            return f"""{base_style}
+
+SLIDE DE CONTENIDO - Con Imagen de Referencia:
+
+Título: {title}
+Contenido: {content}
+
+INSTRUCCIÓN CLAVE: Usa la imagen de referencia proporcionada como INSPIRACIÓN para el estilo visual
+y la composición de este slide. NO copies la imagen literalmente.
+
+CÓMO USAR LA REFERENCIA:
+- Inspírate en la composición, colores dominantes y energía de la imagen
+- Adapta los elementos visuales al estilo hand-drawn watercolor
+- Mantén el mismo tipo de impacto visual pero con tu interpretación artística
+- Integra los elementos relevantes de la referencia con el contenido del slide
+
+LAYOUT:
+- Ilustración inspirada en la referencia integrada contextualmente
+- Texto principal en bullets handwritten
+- Background blanco/crema limpio
+
+TEXT STYLING:
+- Title: Large handwritten font, navy blue (#1A365D), 48-56pt
+- Body text: Medium handwritten, black (#1F2937), 28-36pt
+- Bullets: Hand-drawn dots or checkmarks
+- NO watermark, NO username, NO branding text
+
+COMPOSITION:
+- Top 25%: Title
+- Middle 50%: Illustration (inspired by reference) + text content
+- Bottom 25%: Breathing room
+- Margins: 60px all sides
+"""
+        elif has_asset and entity:
             content_preview = content[:200] if len(content) > 200 else content
             return f"""{base_style}
 
@@ -443,7 +480,37 @@ COMPOSITION:
 """
 
     else:  # cierre
-        if has_asset and entity:
+        if has_asset and entity and is_reference_image(entity):
+            # Cierre con imagen de REFERENCIA
+            return f"""{base_style}
+
+SLIDE DE CIERRE - Con Imagen de Referencia:
+
+Contenido: {content}
+
+INSTRUCCIÓN IMPORTANTE: Este es un slide de cierre amigable, NO escribas la palabra "CTA" en ningún lado.
+El mensaje debe sentirse natural y cercano, como una invitación entre amigos.
+
+INSTRUCCIÓN CLAVE: Usa la imagen de referencia proporcionada como INSPIRACIÓN para el estilo visual.
+Adapta los elementos al estilo hand-drawn watercolor.
+
+LAYOUT:
+- Ilustración positiva y cálida inspirada en la referencia
+- Texto principal en caja hand-drawn acogedora
+- Background beige con watercolor accents cálidos
+
+TEXT STYLING:
+- Texto principal: Large bold handwritten, black, 48-56pt
+- "@sanmunoz.ia": Visible y destacado, handwritten, 36pt
+
+COMPOSITION:
+- Ilustración cálida arriba
+- Texto invitante al centro (en caja hand-drawn)
+- @sanmunoz.ia destacado
+- Friendly, welcoming feel
+- Margins: 60px all sides
+"""
+        elif has_asset and entity:
             return f"""{base_style}
 
 SLIDE DE CIERRE - Con Asset de {entity}:
@@ -1088,7 +1155,6 @@ El script automáticamente:
 2. Usa nano-banana-edit para overlay de logos
 3. Mantiene estilo hand-drawn original
 4. Sobrescribe slides originales con versiones mejoradas
-5. Sincroniza a Google Drive automáticamente
 
 ---
 
@@ -1114,7 +1180,7 @@ El script automáticamente:
 - [ ] Descargar logos oficiales
 - [ ] Copiar a /carousel/assets/
 - [ ] Ejecutar regeneración
-- [ ] Verificar resultados en Google Drive
+- [ ] Verificar resultados generados
 
 ## 💡 Consejos
 
@@ -1148,31 +1214,6 @@ def generate_manifest(bundle_id: str, carousel_dir: Path, slides_generated: List
         json.dump(manifest, f, indent=2)
 
     print(f"   ✅ Manifest generado: manifest.json")
-
-
-def copy_to_google_drive(bundle_id: str, carousel_dir: Path):
-    """Copia carrusel a Google Drive (opcional, configurar GOOGLE_DRIVE_CAROUSEL_PATH en .env)."""
-    if not GOOGLE_DRIVE_CAROUSEL or not GOOGLE_DRIVE_CAROUSEL.exists():
-        return
-
-    # Crear subcarpeta para este bundle
-    drive_bundle_dir = GOOGLE_DRIVE_CAROUSEL / bundle_id
-    drive_bundle_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copiar todos los archivos PNG y manifest
-    for file in carousel_dir.glob("carousel-*.png"):
-        shutil.copy2(file, drive_bundle_dir / file.name)
-
-    manifest_file = carousel_dir / "manifest.json"
-    if manifest_file.exists():
-        shutil.copy2(manifest_file, drive_bundle_dir / "manifest.json")
-
-    # Copiar guía de assets si existe
-    assets_guide = carousel_dir / "carousel-assets-needed.md"
-    if assets_guide.exists():
-        shutil.copy2(assets_guide, drive_bundle_dir / "carousel-assets-needed.md")
-
-    print(f"   ✅ Copiado a Google Drive: CAROUSEL/{bundle_id}/")
 
 
 def main():
@@ -1319,12 +1360,24 @@ def main():
     else:
         print(f"   No hay entidades detectadas, generando solo con ilustraciones")
 
-    # Auto-assign portada-ref to slide 1 if available
+    # Auto-assign reference images to slides
+    # Supports: portada-ref.png -> slide 1, ref-N.png -> slide N
+    slide_numbers = {s["number"] for s in slides}
+
+    # portada-ref.png is an alias for ref-1 (backward compatible)
     portada_ref_path = assets_dir / "portada-ref.png"
-    if portada_ref_path.exists() and 1 not in asset_map:
-        if any(s["number"] == 1 for s in slides):
-            asset_map[1] = (portada_ref_path, "portada-ref")
-            print(f"\n   🎨 Imagen de referencia asignada a slide 1 (portada)")
+    if portada_ref_path.exists() and 1 not in asset_map and 1 in slide_numbers:
+        asset_map[1] = (portada_ref_path, "portada-ref")
+        print(f"\n   🎨 Imagen de referencia asignada a slide 1 (portada)")
+
+    # ref-N.png -> slide N (for any slide)
+    for ref_file in sorted(assets_dir.glob("ref-*.png")):
+        ref_match = re.match(r"ref-(\d+)\.png", ref_file.name)
+        if ref_match:
+            slide_num = int(ref_match.group(1))
+            if slide_num in slide_numbers and slide_num not in asset_map:
+                asset_map[slide_num] = (ref_file, f"ref-{slide_num}")
+                print(f"   🎨 Imagen de referencia asignada a slide {slide_num}")
 
     # Parse --regenerate-slides filter
     only_slides = None
@@ -1484,11 +1537,6 @@ def main():
     # Generar manifest
     print("Generando manifest...")
     generate_manifest(bundle_id, carousel_dir, slides_generated)
-
-    # Copiar a Google Drive (opcional)
-    if GOOGLE_DRIVE_CAROUSEL and GOOGLE_DRIVE_CAROUSEL.exists():
-        print("\nCopiando a Google Drive...")
-        copy_to_google_drive(bundle_id, carousel_dir)
 
     # Reporte final
     elapsed_time = time.time() - start_time

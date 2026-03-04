@@ -119,29 +119,37 @@ Todas las imagenes se generan EN PARALELO para maxima velocidad.
    ```
 4. Preguntar al usuario: "Te parece bien este brief? Quieres cambiar algo antes de generar?"
 
-### PASO 2: Preguntar por Imagen de Referencia para Portada
+### PASO 2: Preguntar por Imagenes de Referencia
 
 **SIEMPRE preguntar:**
 
-"Para la portada quiero crear una ilustracion CREATIVA e IMPACTANTE.
-Tienes alguna imagen de referencia para inspirar la portada?
+"Tienes imagenes de referencia para inspirar algun slide?
+Puedes dar referencias para CUALQUIER slide (portada, contenido o cierre).
 
 Por ejemplo:
-- Un logo en 3D que quieras que aparezca
-- Una escena o estilo visual particular
+- Una imagen para inspirar la portada (composicion, colores, estilo)
+- Una escena o estilo visual para un slide especifico
 - Una imagen de referencia de otra cuenta
 
-Pega la URL o dime 'sin referencia' y creare algo creativo."
+Dime en formato: `slide N -> URL`
+Ejemplo: `slide 1 -> https://ejemplo.com/imagen.png`
 
-**Si da URL**:
-1. Descargar la imagen a `outputs/bundles/[bundle_id]/carousel/assets/portada-ref.png`
-2. Guardar la URL en `outputs/bundles/[bundle_id]/carousel/assets/urls.json`:
+O dime 'sin referencia' y creare todo desde cero."
+
+**Si da URLs**:
+1. Para cada referencia, descargar la imagen:
+   - Slide 1 (portada): guardar como `portada-ref.png` en `carousel/assets/`
+   - Otros slides: guardar como `ref-N.png` (ej: `ref-3.png`) en `carousel/assets/`
+2. Guardar TODAS las URLs en `carousel/assets/urls.json`:
    ```json
    {
-     "portada-ref": "https://url-de-la-imagen..."
+     "portada-ref": "https://url-de-la-portada...",
+     "ref-3": "https://url-del-slide-3...",
+     "ref-5": "https://url-del-slide-5..."
    }
    ```
-   **IMPORTANTE**: El script auto-detecta `portada-ref.png` y la envia como `image_input` a Kie AI.
+   **IMPORTANTE**: El script auto-detecta `portada-ref.png` y `ref-N.png` y los asigna a sus slides.
+   Se envian como `image_input` a Kie AI para inspirar la generacion.
 
 **Si dice "sin referencia"**: El prompt creativo genera algo automaticamente
 
@@ -157,10 +165,11 @@ O dime 'sin assets' para generar solo con ilustraciones."
 
 **Procesamiento de URLs:**
 1. Descargar cada imagen a `outputs/bundles/[bundle_id]/carousel/assets/{entidad}.png`
-2. Guardar URLs originales en `outputs/bundles/[bundle_id]/carousel/assets/urls.json`:
+2. Agregar URLs al mismo `urls.json`:
    ```json
    {
      "portada-ref": "https://...",
+     "ref-3": "https://...",
      "n8n": "https://...",
      "claude": "https://..."
    }
@@ -228,6 +237,19 @@ outputs/bundles/[bundle_id]/carousel/
 
 n8n, ChatGPT, Claude, Make, WhatsApp, Zapier, Anthropic, OpenAI, Gemini
 
+## Imagenes de Referencia
+
+El script soporta imagenes de referencia para CUALQUIER slide:
+
+| Archivo | Slide | Descripcion |
+|---------|-------|-------------|
+| `portada-ref.png` | Slide 1 | Referencia para la portada (alias de ref-1) |
+| `ref-2.png` | Slide 2 | Referencia para slide 2 |
+| `ref-N.png` | Slide N | Referencia para slide N |
+
+Las imagenes de referencia se usan como **inspiracion visual** (composicion, colores, estilo).
+Los logos de entidades se integran como **elementos del diseno** (overlay).
+
 ## Troubleshooting
 
 **"El script se queda colgado"**
@@ -244,9 +266,9 @@ n8n, ChatGPT, Claude, Make, WhatsApp, Zapier, Anthropic, OpenAI, Gemini
 -> El script pasa URLs como `image_input` a la API de Kie AI
 
 **"La imagen de referencia no se envio"**
--> Verificar que `portada-ref.png` existe en `carousel/assets/`
--> Verificar que `urls.json` tiene la entrada `"portada-ref": "https://..."`
--> El script auto-detecta `portada-ref.png` y la asigna al slide 1
+-> Verificar que el archivo existe en `carousel/assets/` (portada-ref.png o ref-N.png)
+-> Verificar que `urls.json` tiene la entrada correspondiente
+-> El script auto-detecta archivos de referencia y los asigna a sus slides
 
 **"Timeout esperando resultado"**
 -> La API esta sobrecargada, usa `--regenerate-slides` para reintentar slides fallidos

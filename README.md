@@ -16,7 +16,7 @@ Solo dale un **tema** y el **numero de slides**. El skill se encarga de todo:
 
 1. **Genera el contenido** de cada slide automaticamente
 2. Muestra un **brief** con la estructura del carrusel
-3. Pregunta por **imagen de referencia** para la portada
+3. Pregunta por **imagenes de referencia** para cualquier slide
 4. Pregunta por **logos/assets** para integrar en slides de contenido
 5. **Genera todas las imagenes EN PARALELO** via Kie AI
 6. Guarda todo organizado por bundle
@@ -107,9 +107,9 @@ El skill sigue 4 pasos obligatorios:
 PASO 1: Mostrar brief
    Claude genera el contenido y te muestra una tabla resumen
 
-PASO 2: Imagen de referencia para portada
-   Te pregunta si tienes una imagen para inspirar la portada
-   (logo 3D, escena, referencia visual)
+PASO 2: Imagenes de referencia
+   Te pregunta si tienes imagenes de referencia para CUALQUIER slide
+   (portada, contenido o cierre)
 
 PASO 3: Logos y assets
    Detecta herramientas mencionadas (n8n, Claude, ChatGPT...)
@@ -167,88 +167,58 @@ outputs/bundles/[bundle_id]/
     ├── ...
     ├── manifest.json                # Metadata de generacion
     ├── carousel-assets-needed.md    # Guia de assets opcionales
-    └── assets/                      # Logos descargados
+    └── assets/                      # Logos y referencias descargados
         ├── urls.json                # URLs originales de los assets
-        └── *.png
+        ├── portada-ref.png          # Referencia para slide 1 (opcional)
+        ├── ref-N.png                # Referencia para slide N (opcional)
+        └── *.png                    # Logos de entidades
 ```
 
 ---
 
-## Formato del input (repurpose-pack.md)
+## Imagenes de referencia
 
-El script lee slides de un archivo markdown. Cuando usas `/carousel-gen`, el contenido se genera automaticamente. El formato es:
+Puedes proporcionar imagenes de referencia para **cualquier slide**, no solo la portada. Las imagenes de referencia se usan como **inspiracion visual** (composicion, colores, estilo).
 
-```markdown
-## Carrusel Instagram
+### Convencion de nombres
 
-### SLIDE 1 - Titulo de la Portada
-\```
-Texto principal de la portada
-\```
+| Archivo | Slide | Descripcion |
+|---------|-------|-------------|
+| `portada-ref.png` | Slide 1 | Referencia para la portada (alias de ref-1) |
+| `ref-2.png` | Slide 2 | Referencia para slide 2 |
+| `ref-3.png` | Slide 3 | Referencia para slide 3 |
+| `ref-N.png` | Slide N | Referencia para cualquier slide |
 
-### SLIDE 2 - Nombre del Slide
-\```
-- Punto 1
-- Punto 2
-- Punto 3
-\```
+### Como funciona
 
-### SLIDE 3 - Otro Slide
-\```
-Contenido del slide
-\```
+1. Se guardan en `carousel/assets/` con el nombre correspondiente
+2. Se registran en `carousel/assets/urls.json`
+3. El script auto-detecta los archivos y los asigna a sus slides
+4. Kie AI los recibe como `image_input` y los usa de inspiracion
 
-### SLIDE 7 - Cierre
-\```
-Si quieres aprender mas, sigueme
-@tuhandle
-\```
+### Ejemplo de urls.json con referencias
+
+```json
+{
+  "portada-ref": "https://example.com/mi-imagen-portada.png",
+  "ref-3": "https://example.com/referencia-slide-3.png",
+  "claude": "https://example.com/claude-logo.png",
+  "chatgpt": "https://example.com/chatgpt-logo.png"
+}
 ```
 
 ---
 
-## Manejo de assets (logos e imagenes de referencia)
+## Manejo de assets (logos)
 
-### Imagen de referencia para portada
+Cuando el skill detecta herramientas mencionadas en los slides (Claude, ChatGPT, n8n, etc.), te pregunta si tienes logos para integrar. Los logos se integran como **elementos del diseno** (overlay), a diferencia de las imagenes de referencia que son solo inspiracion.
 
-Puedes proporcionar una imagen de referencia para inspirar el diseno de la portada. El script la detecta automaticamente:
-
-1. Se descarga a `carousel/assets/portada-ref.png`
-2. Se guarda la URL en `carousel/assets/urls.json` con key `"portada-ref"`
-3. El script la asigna automaticamente al slide 1
-4. Kie AI la usa como inspiracion para composicion, colores y estilo
-
-### Logos de herramientas
-
-Cuando el skill detecta herramientas mencionadas en los slides (Claude, ChatGPT, n8n, etc.), te pregunta si tienes logos para integrar. Si proporcionas URLs:
+Si proporcionas URLs:
 
 1. Descarga cada imagen a `carousel/assets/{entidad}.png`
 2. Guarda las URLs originales en `carousel/assets/urls.json`
 3. El script usa las URLs de `urls.json` como `image_input` en la API de Kie AI
 4. Nano Banana integra los logos reales en las ilustraciones hand-drawn
-
-### Donde va urls.json
-
-**`urls.json` debe estar en `carousel/assets/`** (junto a los PNGs descargados).
-
-```
-carousel/
-└── assets/
-    ├── urls.json       <-- AQUI
-    ├── portada-ref.png
-    ├── claude.png
-    └── chatgpt.png
-```
-
-### Formato de urls.json
-
-```json
-{
-  "portada-ref": "https://example.com/mi-imagen-referencia.png",
-  "claude": "https://example.com/claude-logo.png",
-  "chatgpt": "https://example.com/chatgpt-logo.png"
-}
-```
 
 ---
 
@@ -283,18 +253,6 @@ carousel/
 
 ---
 
-## Configuracion opcional
-
-### Google Drive sync
-
-Si quieres copiar los carruseles automaticamente a Google Drive, agrega en `.env`:
-
-```bash
-GOOGLE_DRIVE_CAROUSEL_PATH=/Users/tu-usuario/Library/CloudStorage/GoogleDrive-.../Mi unidad/CAROUSEL
-```
-
----
-
 ## Herramientas detectadas automaticamente
 
 El script detecta menciones de estas herramientas para sugerir logos:
@@ -311,7 +269,7 @@ El script detecta menciones de estas herramientas para sugerir logos:
 | No encuentra repurpose-pack.md | El skill lo crea automaticamente. Si usas standalone, crealo con el formato de arriba |
 | API key no configurada | Crea `.env` con `KIE_AI_API_KEY=tu-key` (copia `.env.example`) |
 | Logos no se integran / genericos | Verifica que `urls.json` esta en `carousel/assets/` con las URLs correctas |
-| Imagen de referencia no se envia | Verifica que `portada-ref.png` existe en `carousel/assets/` y `urls.json` tiene `"portada-ref"` |
+| Imagen de referencia no se envia | Verifica que el archivo existe (`portada-ref.png` o `ref-N.png`) y `urls.json` tiene la entrada |
 | Timeout esperando resultado | API sobrecargada, usa `--regenerate-slides` para reintentar |
 | Credits insufficient | Recarga creditos en kie.ai, luego usa `--regenerate-slides "6,7,8"` para los que faltaron |
 | ModuleNotFoundError | Ejecuta `pip install requests python-dotenv Pillow` |
