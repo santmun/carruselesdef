@@ -12,13 +12,14 @@ Genera imagenes estilo acuarela y lapices de colores con tipografia handwritten,
 
 ## Que hace
 
-A partir de un archivo markdown con el texto de cada slide, este skill:
+Solo dale un **tema** y el **numero de slides**. El skill se encarga de todo:
 
-1. Muestra un **brief** con la estructura del carrusel
-2. Pregunta por **imagen de referencia** para la portada
-3. Pregunta por **logos/assets** para integrar en slides de contenido
-4. **Genera las imagenes** via Kie AI con estilo watercolor hand-drawn
-5. Guarda todo organizado por bundle
+1. **Genera el contenido** de cada slide automaticamente
+2. Muestra un **brief** con la estructura del carrusel
+3. Pregunta por **imagen de referencia** para la portada
+4. Pregunta por **logos/assets** para integrar en slides de contenido
+5. **Genera todas las imagenes EN PARALELO** via Kie AI
+6. Guarda todo organizado por bundle
 
 ## Resultado
 
@@ -35,7 +36,7 @@ Imagenes como estas (estilo ilustracion a mano):
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) instalado
 - Python 3.8+
 - API Key de [Kie AI](https://kie.ai/)
-- Paquetes Python: `requests`, `python-dotenv`
+- Paquetes Python: `requests`, `python-dotenv`, `Pillow`
 
 ## Instalacion
 
@@ -49,31 +50,29 @@ cd carruselesdef
 ### 2. Instalar dependencias Python
 
 ```bash
-pip install requests python-dotenv
+pip install requests python-dotenv Pillow
 ```
 
 ### 3. Configurar API Key
 
-Crea un archivo `.env` en la raiz del proyecto:
+Copia el archivo de ejemplo y agrega tu API key:
 
 ```bash
-KIE_AI_API_KEY=tu-api-key-de-kie-ai
+cp .env.example .env
 ```
 
-Puedes obtener tu API key en [kie.ai](https://kie.ai/).
+Edita `.env` y reemplaza `tu-api-key-aqui` con tu API key de [kie.ai](https://kie.ai/).
 
-### 4. Copiar el skill a tu proyecto
+### 4. (Opcional) Copiar a otro proyecto
 
-Copia la carpeta del skill a tu proyecto de Claude Code:
+Si quieres usar el skill en otro proyecto de Claude Code:
 
 ```bash
 # Desde la raiz de TU proyecto
-mkdir -p .claude/skills/carousel-gen
+mkdir -p .claude/skills/carousel-gen scripts
 cp carruselesdef/.claude/skills/carousel-gen/SKILL.md .claude/skills/carousel-gen/
-
-# Copiar el script de generacion
-mkdir -p scripts
 cp carruselesdef/scripts/generate-carousel.py scripts/
+cp carruselesdef/.env.example .env.example
 ```
 
 ---
@@ -83,14 +82,22 @@ cp carruselesdef/scripts/generate-carousel.py scripts/
 ### Dentro de Claude Code
 
 ```
-/carousel-gen [bundle_id]
+/carousel-gen [tema] [numero_de_slides]
 ```
 
-Ejemplo:
+Ejemplos:
 
 ```
-/carousel-gen 2026-03-01-5-noticias-ia-semana
+/carousel-gen 5 herramientas IA para emprendedores 7
+/carousel-gen como usar ChatGPT para crear contenido 5
+/carousel-gen tendencias de IA en 2026 8
 ```
+
+El skill automaticamente:
+- Genera un `bundle_id` basado en la fecha y el tema
+- Crea todas las carpetas necesarias
+- Genera el contenido de los slides
+- Ejecuta el workflow interactivo
 
 ### Workflow interactivo
 
@@ -98,7 +105,7 @@ El skill sigue 4 pasos obligatorios:
 
 ```
 PASO 1: Mostrar brief
-   Claude lee el contenido de slides y te muestra una tabla resumen
+   Claude genera el contenido y te muestra una tabla resumen
 
 PASO 2: Imagen de referencia para portada
    Te pregunta si tienes una imagen para inspirar la portada
@@ -108,8 +115,8 @@ PASO 3: Logos y assets
    Detecta herramientas mencionadas (n8n, Claude, ChatGPT...)
    y te pregunta si tienes logos para integrar
 
-PASO 4: Generacion
-   Ejecuta el script y genera todas las imagenes
+PASO 4: Generacion en paralelo
+   Ejecuta el script y genera todas las imagenes al mismo tiempo
 ```
 
 ### Standalone (sin Claude Code)
@@ -137,30 +144,31 @@ python3 scripts/generate-carousel.py "mi-bundle-id" --skip-interactive
 ```
 carruselesdef/
 ├── README.md
+├── .env.example                     # Template de configuracion
 ├── .gitignore
 ├── .claude/
 │   └── skills/
 │       └── carousel-gen/
-│           └── SKILL.md          # Definicion del skill para Claude Code
+│           └── SKILL.md             # Definicion del skill para Claude Code
 └── scripts/
-    └── generate-carousel.py      # Script principal de generacion
+    └── generate-carousel.py         # Script principal de generacion
 ```
 
 ### Estructura del bundle (output)
 
-El script espera y genera archivos en esta estructura:
+El script crea y genera archivos en esta estructura:
 
 ```
 outputs/bundles/[bundle_id]/
-├── repurpose-pack.md             # INPUT: texto de cada slide (tu lo creas)
+├── repurpose-pack.md                # Texto de cada slide (auto-generado)
 └── carousel/
-    ├── carousel-01.png           # OUTPUT: imagenes generadas
+    ├── carousel-01.png              # Imagenes generadas
     ├── carousel-02.png
     ├── ...
-    ├── manifest.json             # Metadata de generacion
-    ├── carousel-assets-needed.md # Guia de assets opcionales
-    └── assets/                   # Logos descargados
-        ├── urls.json             # URLs originales de los assets
+    ├── manifest.json                # Metadata de generacion
+    ├── carousel-assets-needed.md    # Guia de assets opcionales
+    └── assets/                      # Logos descargados
+        ├── urls.json                # URLs originales de los assets
         └── *.png
 ```
 
@@ -168,7 +176,7 @@ outputs/bundles/[bundle_id]/
 
 ## Formato del input (repurpose-pack.md)
 
-El script lee slides de un archivo markdown. El formato esperado es:
+El script lee slides de un archivo markdown. Cuando usas `/carousel-gen`, el contenido se genera automaticamente. El formato es:
 
 ```markdown
 ## Carrusel Instagram
@@ -201,7 +209,16 @@ Si quieres aprender mas, sigueme
 
 ## Manejo de assets (logos e imagenes de referencia)
 
-### Como funciona
+### Imagen de referencia para portada
+
+Puedes proporcionar una imagen de referencia para inspirar el diseno de la portada. El script la detecta automaticamente:
+
+1. Se descarga a `carousel/assets/portada-ref.png`
+2. Se guarda la URL en `carousel/assets/urls.json` con key `"portada-ref"`
+3. El script la asigna automaticamente al slide 1
+4. Kie AI la usa como inspiracion para composicion, colores y estilo
+
+### Logos de herramientas
 
 Cuando el skill detecta herramientas mencionadas en los slides (Claude, ChatGPT, n8n, etc.), te pregunta si tienes logos para integrar. Si proporcionas URLs:
 
@@ -218,22 +235,18 @@ Cuando el skill detecta herramientas mencionadas en los slides (Claude, ChatGPT,
 carousel/
 └── assets/
     ├── urls.json       <-- AQUI
+    ├── portada-ref.png
     ├── claude.png
-    ├── chatgpt.png
-    └── headshot.png
+    └── chatgpt.png
 ```
-
-El script busca `urls.json` en dos ubicaciones por compatibilidad:
-1. `carousel/assets/urls.json` (ubicacion principal)
-2. `carousel/urls.json` (fallback)
 
 ### Formato de urls.json
 
 ```json
 {
+  "portada-ref": "https://example.com/mi-imagen-referencia.png",
   "claude": "https://example.com/claude-logo.png",
-  "chatgpt": "https://example.com/chatgpt-logo.png",
-  "headshot": "https://example.com/tu-foto.jpg"
+  "chatgpt": "https://example.com/chatgpt-logo.png"
 }
 ```
 
@@ -255,18 +268,30 @@ El script busca `urls.json` en dos ubicaciones por compatibilidad:
 |------|-------------|
 | **Portada** | Ilustracion creativa e impactante + titulo grande + fondo beige watercolor |
 | **Contenido** | Fondo blanco/crema + logo real (si hay) + texto en bullets |
-| **Cierre** | Fondo beige + mensaje natural + handle + headshot del creador |
+| **Cierre** | Fondo beige + mensaje natural + handle |
 
 ---
 
-## Costos
+## Costos y tiempos
 
 | Concepto | Valor |
 |----------|-------|
 | Por imagen | ~$0.10 USD |
 | Carrusel de 7 slides | ~$0.70 USD |
-| Tiempo por slide | ~1 minuto |
-| Tiempo total (7 slides) | ~7-10 minutos |
+| Generacion | **EN PARALELO** (todas al mismo tiempo) |
+| Tiempo total (7 slides) | ~2-3 minutos |
+
+---
+
+## Configuracion opcional
+
+### Google Drive sync
+
+Si quieres copiar los carruseles automaticamente a Google Drive, agrega en `.env`:
+
+```bash
+GOOGLE_DRIVE_CAROUSEL_PATH=/Users/tu-usuario/Library/CloudStorage/GoogleDrive-.../Mi unidad/CAROUSEL
+```
 
 ---
 
@@ -283,10 +308,13 @@ El script detecta menciones de estas herramientas para sugerir logos:
 | Problema | Solucion |
 |----------|----------|
 | El script se queda colgado | Usa `--skip-interactive` y `PYTHONUNBUFFERED=1` |
-| No encuentra repurpose-pack.md | Crea el archivo con el formato de arriba |
-| API key no configurada | Crea `.env` con `KIE_AI_API_KEY=tu-key` |
+| No encuentra repurpose-pack.md | El skill lo crea automaticamente. Si usas standalone, crealo con el formato de arriba |
+| API key no configurada | Crea `.env` con `KIE_AI_API_KEY=tu-key` (copia `.env.example`) |
 | Logos no se integran / genericos | Verifica que `urls.json` esta en `carousel/assets/` con las URLs correctas |
-| Timeout esperando resultado | API sobrecargada, usa `--regenerate-slides` |
+| Imagen de referencia no se envia | Verifica que `portada-ref.png` existe en `carousel/assets/` y `urls.json` tiene `"portada-ref"` |
+| Timeout esperando resultado | API sobrecargada, usa `--regenerate-slides` para reintentar |
+| Credits insufficient | Recarga creditos en kie.ai, luego usa `--regenerate-slides "6,7,8"` para los que faltaron |
+| ModuleNotFoundError | Ejecuta `pip install requests python-dotenv Pillow` |
 
 ---
 

@@ -1,57 +1,110 @@
 ---
 name: carousel-gen
-description: Genera carruseles Instagram con estilo hand-drawn minimalista usando Kie AI (Nano Banana Pro). Workflow interactivo que muestra brief, pregunta por assets/logos y genera imagenes 1080x1350px.
-allowed-tools: Read, Write, Bash(python3:*), Bash(cd:*), Bash(curl:*), Bash(ls:*), Bash(mkdir:*), Bash(cp:*), Bash(export:*), Glob, Grep, AskUserQuestion
+description: Genera carruseles Instagram con estilo hand-drawn minimalista usando Kie AI (Nano Banana Pro). El usuario solo necesita dar el tema y numero de slides. El flujo auto-crea carpetas, genera contenido y produce imagenes 1080x1350px. Generacion en paralelo.
+allowed-tools: Read, Write, Bash(python3:*), Bash(cd:*), Bash(curl:*), Bash(ls:*), Bash(mkdir:*), Bash(cp:*), Bash(export:*), Bash(pip3:*), Glob, Grep, AskUserQuestion, Edit
 user-invocable: true
 ---
 
 # Generador de Carruseles Instagram - Kie AI (Nano Banana Pro)
 
 Skill para generar carruseles Instagram con estilo hand-drawn minimalista watercolor.
+Todas las imagenes se generan EN PARALELO para maxima velocidad.
 
 ## Uso
 
 ```
-/carousel-gen [bundle_id]
+/carousel-gen [tema] [numero_de_slides]
 ```
 
 **Parametros:**
-- `bundle_id`: ID del bundle (ej: 2026-03-01-5-noticias-ia-semana)
+- `tema`: Tema del carrusel (ej: "5 herramientas IA para automatizar tu negocio")
+- `numero_de_slides`: Cantidad de slides a generar (ej: 7). Default: 7
 
-## Workflow Interactivo (4 pasos obligatorios)
+**Ejemplos:**
+```
+/carousel-gen 5 herramientas IA para emprendedores 7
+/carousel-gen como usar ChatGPT para crear contenido 5
+/carousel-gen tendencias de IA en 2026 8
+```
+
+## Workflow Automatico (4 pasos obligatorios)
 
 **REGLA PRINCIPAL**: NUNCA generar directamente. Siempre seguir los 4 pasos en orden.
 
-### PASO 1: Mostrar Brief
+### PASO 0: Preparacion Automatica (INVISIBLE al usuario)
 
-1. Leer `repurpose-pack.md` del bundle:
+1. **Generar bundle_id** automaticamente con formato: `YYYY-MM-DD-tema-slug`
+   - Ejemplo: `2026-03-04-5-herramientas-ia-emprendedores`
+   - Usar la fecha de hoy
+   - Convertir tema a slug (minusculas, sin acentos, guiones en vez de espacios, max 6 palabras)
+
+2. **Crear estructura de carpetas** automaticamente:
+   ```bash
+   mkdir -p outputs/bundles/[bundle_id]/carousel/assets
    ```
-   outputs/bundles/[bundle_id]/repurpose-pack.md
+
+3. **Verificar dependencias Python**:
+   ```bash
+   pip3 install requests python-dotenv Pillow 2>/dev/null || true
    ```
-2. Buscar la seccion "Carrusel Instagram" y extraer slides
-3. Si no existe, CREAR el archivo con formato correcto:
+
+4. **Verificar API key** - Comprobar que existe el archivo `.env` con `KIE_AI_API_KEY`:
+   ```bash
+   if [ -f .env ] && grep -q "KIE_AI_API_KEY" .env; then
+     echo "API key configurada"
+   else
+     echo "FALTA: Crear archivo .env con KIE_AI_API_KEY=tu-api-key"
+   fi
+   ```
+   Si NO existe, DETENER y pedir al usuario que cree `.env` con su API key de kie.ai
+
+5. **Generar repurpose-pack.md** con el contenido de los slides.
+
+   Crear el archivo `outputs/bundles/[bundle_id]/repurpose-pack.md` con este formato:
+
    ```markdown
    ## Carrusel Instagram
 
-   ### SLIDE 1 - Titulo de Portada
+   ### SLIDE 1 - [Titulo Portada Creativo y Llamativo]
    \```
-   Contenido de la portada
+   [Titulo principal grande]
+   [Subtitulo corto]
    \```
 
-   ### SLIDE 2 - Titulo del Slide
+   ### SLIDE 2 - [Titulo del Tema 1]
    \```
-   Bullet 1
-   Bullet 2
+   [Titulo del punto]
+   - Bullet 1: informacion concisa y valiosa
+   - Bullet 2: dato interesante o tip practico
+   - Bullet 3: ejemplo o aplicacion real
+   \```
+
+   [... mas slides de contenido ...]
+
+   ### SLIDE N - Sigueme para mas tips
+   \```
+   Si quieres aprender mas sobre [tema], sigueme
+   @sanmunoz.ia
    \```
    ```
-4. Ejecutar dry-run para detectar entidades:
+
+   **REGLAS para generar contenido de slides:**
+   - Slide 1 = Portada: titulo CREATIVO e IMPACTANTE que genere curiosidad (hook)
+   - Slides 2 a N-1 = Contenido: informacion VALIOSA con bullets concretos
+   - Slide N (ultimo) = Cierre: mensaje natural invitante, NUNCA decir "CTA" ni "Call to Action"
+   - Cada slide debe tener 2-4 bullets informativos
+   - Lenguaje casual pero profesional
+   - Incluir datos, ejemplos o tips practicos
+   - El contenido debe fluir como una historia/narrativa
+
+### PASO 1: Mostrar Brief
+
+1. Leer el `repurpose-pack.md` generado
+2. Ejecutar dry-run para detectar entidades:
    ```bash
-   cd "/Users/santiagomunoz/Documents/Copia de agentesanmunoz"
    python3 scripts/generate-carousel.py "[bundle_id]" --dry-run
    ```
-   O analizar manualmente buscando: n8n, ChatGPT, Claude, Make, WhatsApp, Zapier, Gemini, etc.
-
-5. Mostrar brief al usuario en tabla:
+3. Mostrar brief al usuario en tabla:
    ```
    BRIEF DEL CARRUSEL
 
@@ -64,6 +117,7 @@ Skill para generar carruseles Instagram con estilo hand-drawn minimalista waterc
 
    Formato: 1080x1350px (4:5) | Estilo: Hand-drawn watercolor
    ```
+4. Preguntar al usuario: "Te parece bien este brief? Quieres cambiar algo antes de generar?"
 
 ### PASO 2: Preguntar por Imagen de Referencia para Portada
 
@@ -79,7 +133,16 @@ Por ejemplo:
 
 Pega la URL o dime 'sin referencia' y creare algo creativo."
 
-**Si da URL**: Descargar a `/carousel/assets/portada-ref.png`, agregar a `urls.json`
+**Si da URL**:
+1. Descargar la imagen a `outputs/bundles/[bundle_id]/carousel/assets/portada-ref.png`
+2. Guardar la URL en `outputs/bundles/[bundle_id]/carousel/assets/urls.json`:
+   ```json
+   {
+     "portada-ref": "https://url-de-la-imagen..."
+   }
+   ```
+   **IMPORTANTE**: El script auto-detecta `portada-ref.png` y la envia como `image_input` a Kie AI.
+
 **Si dice "sin referencia"**: El prompt creativo genera algo automaticamente
 
 ### PASO 3: Preguntar por Logos/Assets
@@ -93,33 +156,30 @@ Dame las URLs en formato: `entidad -> URL`
 O dime 'sin assets' para generar solo con ilustraciones."
 
 **Procesamiento de URLs:**
-1. Descargar cada imagen a `/outputs/bundles/[bundle_id]/carousel/assets/{entidad}.png`
-2. Guardar URLs originales en `/outputs/bundles/[bundle_id]/carousel/assets/urls.json`:
+1. Descargar cada imagen a `outputs/bundles/[bundle_id]/carousel/assets/{entidad}.png`
+2. Guardar URLs originales en `outputs/bundles/[bundle_id]/carousel/assets/urls.json`:
    ```json
    {
+     "portada-ref": "https://...",
      "n8n": "https://...",
      "claude": "https://..."
    }
    ```
    **IMPORTANTE**: `urls.json` DEBE estar en `carousel/assets/` (junto a los PNGs).
-   El script busca ahi primero. Si por alguna razon esta en `carousel/`, tambien lo encuentra.
-
-**HEADSHOT OBLIGATORIO en slide de cierre:**
-- Agregar a `urls.json`: `{"headshot": "https://res.cloudinary.com/db7fnd2u9/image/upload/v1770766130/77745902bd53042e9840da2eb48e7dc0_tplv-tiktokx-cropcenter_1080_1080_1_diczzc.jpg"}`
-- Descargar a `/carousel/assets/headshot.png`
+   El script lee las URLs de ahi para pasarlas como `image_input` a Kie AI.
 
 ### PASO 4: Generar Carrusel
 
 Ejecutar con `--skip-interactive` y `PYTHONUNBUFFERED=1`:
 
 ```bash
-cd "/Users/santiagomunoz/Documents/Copia de agentesanmunoz"
 PYTHONUNBUFFERED=1 python3 scripts/generate-carousel.py "[bundle_id]" --skip-interactive
 ```
 
 - `--skip-interactive`: OBLIGATORIO desde Claude Code (evita input() bloqueante)
 - `PYTHONUNBUFFERED=1`: Para ver output en tiempo real
 - La API key se lee automaticamente de `.env`
+- **TODAS las imagenes se generan EN PARALELO** (mucho mas rapido)
 
 **Regenerar slides especificos:**
 ```bash
@@ -132,12 +192,11 @@ PYTHONUNBUFFERED=1 python3 scripts/generate-carousel.py "[bundle_id]" --skip-int
 - Tipografia handwritten (Nano Banana la escribe)
 - Fondos claros (beige #F5F1E8, crema #FAF9F6, blanco #FFFFFF)
 - Elementos organicos e imperfectos (charming)
-- SIN avatares/fotos del creador (excepto slide cierre con headshot)
 
 ### Estructura de Slides
 - **Slide 1 (Portada)**: Ilustracion CREATIVA e IMPACTANTE + titulo grande
-- **Slides 2-6 (Contenido)**: Fondo blanco/crema + logo real + texto bullets
-- **Slide 7 (Cierre)**: Fondo beige + mensaje natural invitante + @sanmunoz.ia + headshot
+- **Slides 2-N-1 (Contenido)**: Fondo blanco/crema + logo real + texto bullets
+- **Slide N (Cierre)**: Fondo beige + mensaje natural invitante + @sanmunoz.ia
 
 ### Slide de Cierre
 El ultimo slide NUNCA debe decir "CTA" ni "Call to Action".
@@ -151,18 +210,18 @@ Si quieres aprender mas sobre automatizacion, sigueme
 ## Output
 
 ```
-/outputs/bundles/[bundle_id]/carousel/
-├── carousel-01.png through carousel-10.png
+outputs/bundles/[bundle_id]/carousel/
+├── carousel-01.png through carousel-NN.png
 ├── manifest.json
-└── carousel-assets-needed.md
+├── carousel-assets-needed.md
+└── assets/
+    └── urls.json
 ```
-
-Google Drive: `CAROUSEL/[bundle_id]/`
 
 ## Tiempos y Costos
 
-- ~1 min por slide (solo 1 generacion por slide)
-- 7 slides ~ 7-10 minutos total
+- Generacion en PARALELO: todos los slides al mismo tiempo
+- 7 slides ~ 2-3 minutos total (vs 7-10 min secuencial)
 - Costo: ~$0.70 para 7 slides (~$0.10/imagen)
 
 ## Herramientas Detectadas Automaticamente
@@ -175,14 +234,25 @@ n8n, ChatGPT, Claude, Make, WhatsApp, Zapier, Anthropic, OpenAI, Gemini
 -> SIEMPRE usar `--skip-interactive` y `PYTHONUNBUFFERED=1`
 
 **"No encuentra repurpose-pack.md"**
--> Crear el archivo con formato correcto (### SLIDE N - Titulo + bloque ```)
+-> El PASO 0 lo crea automaticamente. Si falta, crearlo con formato correcto (### SLIDE N - Titulo + bloque ```)
 
 **"API key no configurada"**
--> Se lee de `.env` automaticamente. Verificar que existe el archivo.
+-> Crear archivo `.env` en la raiz del proyecto con: `KIE_AI_API_KEY=tu-api-key`
 
 **"Logos inventados/genericos"**
--> Verificar que `urls.json` tiene las URLs correctas
--> El script pasa URLs como `image_input` a la API
+-> Verificar que `urls.json` tiene las URLs correctas de los logos
+-> El script pasa URLs como `image_input` a la API de Kie AI
+
+**"La imagen de referencia no se envio"**
+-> Verificar que `portada-ref.png` existe en `carousel/assets/`
+-> Verificar que `urls.json` tiene la entrada `"portada-ref": "https://..."`
+-> El script auto-detecta `portada-ref.png` y la asigna al slide 1
 
 **"Timeout esperando resultado"**
 -> La API esta sobrecargada, usa `--regenerate-slides` para reintentar slides fallidos
+
+**"ModuleNotFoundError: No module named 'requests'"**
+-> Ejecutar: `pip3 install requests python-dotenv Pillow`
+
+**"Credits insufficient"**
+-> Recargar creditos en kie.ai, luego usar `--regenerate-slides "6,7,8"` para los que faltaron

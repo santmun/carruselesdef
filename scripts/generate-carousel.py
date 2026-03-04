@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Cargar .env desde la raiz del proyecto
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -34,10 +35,12 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 # Configuración
 PROJECT_ROOT = Path(__file__).parent.parent
 OUTPUTS_DIR = PROJECT_ROOT / "outputs" / "bundles"
+OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 TEMPLATES_DIR = PROJECT_ROOT / "templates"
 
-# Google Drive - Carpeta de carruseles
-GOOGLE_DRIVE_CAROUSEL = Path.home() / "Library" / "CloudStorage" / "GoogleDrive-contacto@innovandohorizontes.com" / "Mi unidad" / "CAROUSEL"
+# Google Drive - Carpeta de carruseles (opcional, configurar en .env)
+GOOGLE_DRIVE_PATH = os.environ.get("GOOGLE_DRIVE_CAROUSEL_PATH", "")
+GOOGLE_DRIVE_CAROUSEL = Path(GOOGLE_DRIVE_PATH) if GOOGLE_DRIVE_PATH else None
 
 # API Kie AI
 KIE_API_BASE = "https://api.kie.ai/api/v1/jobs"
@@ -262,7 +265,41 @@ Minimalist, friendly, educational aesthetic.
 """
 
     if slide_type == "portada":
-        if has_asset and entity:
+        if has_asset and entity and entity == "portada-ref":
+            # Portada con imagen de REFERENCIA (no logo)
+            return f"""{base_style}
+
+PORTADA DE CARRUSEL - IMPACTANTE Y CREATIVA - Con Imagen de Referencia:
+
+Título: {title}
+
+INSTRUCCIÓN CLAVE: Usa la imagen de referencia proporcionada como INSPIRACIÓN para el estilo visual,
+la composición y la energía de la portada. Crea una ilustración CREATIVA, INESPERADA y LLAMATIVA
+que capture la esencia de la referencia pero en estilo hand-drawn watercolor.
+
+CÓMO USAR LA REFERENCIA:
+- Inspírate en la composición, colores dominantes y energía de la imagen
+- Adapta los elementos visuales al estilo hand-drawn watercolor
+- Mantén el mismo tipo de impacto visual pero con tu interpretación artística
+- Si la referencia muestra una persona, dibújala como ilustración estilizada
+
+REQUISITOS VISUALES:
+- Background watercolor wash en beige/crema con salpicaduras de color
+- Ilustración GRANDE que ocupe al menos 50% del slide
+- Sensación de movimiento, energía, dinamismo
+- Título en tipografía handwritten bold: "{title}"
+
+TEXT CONTENT:
+{content}
+
+COMPOSITION:
+- Ilustración dominante (centro o tercio superior, grande y llamativa)
+- Título grande navy blue (#1A365D), 72-80pt handwritten
+- NO watermark, NO username, NO branding text
+- Safe margins: 60px all sides
+"""
+        elif has_asset and entity:
+            # Portada con LOGO de herramienta
             return f"""{base_style}
 
 PORTADA DE CARRUSEL - IMPACTANTE Y CREATIVA - Con Asset de {entity}:
@@ -1114,9 +1151,8 @@ def generate_manifest(bundle_id: str, carousel_dir: Path, slides_generated: List
 
 
 def copy_to_google_drive(bundle_id: str, carousel_dir: Path):
-    """Copia carrusel a Google Drive."""
-    if not GOOGLE_DRIVE_CAROUSEL.exists():
-        print(f"   ⚠️  Carpeta Google Drive no encontrada: {GOOGLE_DRIVE_CAROUSEL}")
+    """Copia carrusel a Google Drive (opcional, configurar GOOGLE_DRIVE_CAROUSEL_PATH en .env)."""
+    if not GOOGLE_DRIVE_CAROUSEL or not GOOGLE_DRIVE_CAROUSEL.exists():
         return
 
     # Crear subcarpeta para este bundle
@@ -1157,11 +1193,11 @@ def main():
     print(f"{'='*60}")
     print(f"\n📦 Bundle: {bundle_id}")
 
-    # Validar bundle existe
+    # Crear bundle si no existe (auto-create flow)
     bundle_path = OUTPUTS_DIR / bundle_id
     if not bundle_path.exists():
-        print(f"❌ Error: Bundle no encontrado en {bundle_path}")
-        sys.exit(1)
+        print(f"   Creando bundle directory: {bundle_path}")
+        bundle_path.mkdir(parents=True, exist_ok=True)
 
     print(f"📁 Path: {bundle_path}\n")
 
@@ -1283,12 +1319,12 @@ def main():
     else:
         print(f"   No hay entidades detectadas, generando solo con ilustraciones")
 
-    # Auto-assign headshot to cierre (last slide) if available
-    last_slide_num = slides[-1]["number"]
-    headshot_path = assets_dir / "headshot.png"
-    if headshot_path.exists() and last_slide_num not in asset_map:
-        asset_map[last_slide_num] = (headshot_path, "headshot")
-        print(f"\n   🎤 Headshot asignado automáticamente a slide {last_slide_num} (cierre)")
+    # Auto-assign portada-ref to slide 1 if available
+    portada_ref_path = assets_dir / "portada-ref.png"
+    if portada_ref_path.exists() and 1 not in asset_map:
+        if any(s["number"] == 1 for s in slides):
+            asset_map[1] = (portada_ref_path, "portada-ref")
+            print(f"\n   🎨 Imagen de referencia asignada a slide 1 (portada)")
 
     # Parse --regenerate-slides filter
     only_slides = None
@@ -1296,29 +1332,27 @@ def main():
         only_slides = set(int(s.strip()) for s in args.regenerate_slides.split(","))
         print(f"\n🔄 Regenerando solo slides: {sorted(only_slides)}\n")
 
-    # FASE 3: Generar slides con integracion creativa
-    print(f"\nGENERANDO SLIDES\n")
+    # FASE 3: Submitting all tasks to Kie AI (PARALLEL)
+    print(f"\n{'='*60}")
+    print(f"ENVIANDO TAREAS EN PARALELO")
+    print(f"{'='*60}\n")
 
-    slides_generated = []
+    pending_tasks = {}
     start_time = time.time()
 
-    for idx, slide in enumerate(slides, 1):
+    for slide in slides:
         slide_num = slide["number"]
         slide_type = determine_slide_type(slide_num, len(slides))
 
-        # Skip slides not in regeneration list
         if only_slides and slide_num not in only_slides:
-            print(f"Slide {slide_num}/{len(slides)} - {slide['title']} (saltando)")
+            print(f"   Slide {slide_num} - {slide['title']} (saltando)")
             continue
-
-        print(f"Slide {slide_num}/{len(slides)} - {slide['title']}")
-        print(f"   Tipo: {slide_type}")
 
         has_asset = slide_num in asset_map
         entity = asset_map[slide_num][1] if has_asset else None
 
-        if has_asset:
-            print(f"   Con asset de: {entity}")
+        asset_info = f" [con referencia: {entity}]" if has_asset else ""
+        print(f"   Slide {slide_num} [{slide_type}]: {slide['title']}{asset_info}")
 
         prompt = generate_creative_integration_prompt(
             slide_type=slide_type,
@@ -1328,48 +1362,120 @@ def main():
             has_asset=has_asset
         )
 
-        # Resolver URL del logo si tiene asset
+        # Resolver URL del asset si tiene
         image_input = None
         if has_asset:
             asset_path = asset_map[slide_num][0]
-            logo_url = upload_asset_to_kie(api_key, asset_path)  # Retorna URL pública de urls.json
-            if logo_url:
-                image_input = [logo_url]
+            asset_url = upload_asset_to_kie(api_key, asset_path)
+            if asset_url:
+                image_input = [asset_url]
 
-        print(f"   Creando tarea en Kie AI...")
         task_id = create_kie_task(api_key, prompt, image_input)
 
         if not task_id:
-            print(f"   Saltando slide {slide_num} (error creando tarea)\n")
+            print(f"   ❌ Slide {slide_num} - error creando tarea")
             continue
 
-        print(f"   Esperando resultado (taskId: {task_id[:12]}...)...")
-        image_url = poll_task_status(api_key, task_id)
+        pending_tasks[slide_num] = {
+            'task_id': task_id,
+            'slide': slide,
+            'slide_type': slide_type,
+            'entity': entity,
+        }
+        print(f"   ✅ Slide {slide_num} - tarea enviada (taskId: {task_id[:12]}...)")
 
-        if not image_url:
-            print(f"   Saltando slide {slide_num} (timeout o error)\n")
-            continue
+    if not pending_tasks:
+        print("\n❌ No se pudieron crear tareas. Verifica tu API key y creditos.")
+        sys.exit(1)
 
-        output_filename = f"carousel-{slide_num:02d}.png"
-        output_path = carousel_dir / output_filename
+    # FASE 4: Poll all tasks in parallel
+    print(f"\n{'='*60}")
+    print(f"ESPERANDO RESULTADOS ({len(pending_tasks)} slides en paralelo)")
+    print(f"{'='*60}\n")
 
-        print(f"   Descargando imagen...")
-        if download_image(image_url, output_path):
-            print(f"   Guardado: {output_filename}\n")
+    slides_generated = []
 
-            slides_generated.append({
-                "id": slide_num,
-                "type": slide_type,
-                "title": slide["title"],
-                "filename": output_filename,
-                "success": True,
-                "with_asset": entity if has_asset else None
-            })
-        else:
-            print(f"   Error descargando imagen\n")
+    def process_slide(slide_num, info):
+        """Polls a single slide task and downloads the result."""
+        task_id = info['task_id']
+        # Poll with slide-prefixed output
+        api_key_local = api_key
+        headers = {"Authorization": f"Bearer {api_key_local}"}
 
-        if idx < len(slides):
-            time.sleep(2)
+        for attempt in range(MAX_POLL_ATTEMPTS):
+            try:
+                response = requests.get(
+                    KIE_RECORD_INFO,
+                    headers=headers,
+                    params={"taskId": task_id},
+                    timeout=30
+                )
+                response.raise_for_status()
+
+                data = response.json().get("data") or {}
+                state = data.get("state", "")
+
+                if state == "success":
+                    result_json = data.get("resultJson", "{}")
+                    result = json.loads(result_json)
+                    urls = result.get("resultUrls", [])
+                    if urls:
+                        return urls[0]
+                    else:
+                        print(f"   [Slide {slide_num}] ❌ Completada pero sin URLs")
+                        return None
+
+                elif state == "fail":
+                    fail_msg = data.get("failMsg", "Unknown error")
+                    print(f"   [Slide {slide_num}] ❌ Fallo: {fail_msg}")
+                    return None
+
+                elif state in ["waiting", "queuing", "generating"]:
+                    if attempt % 6 == 0:  # Print status every 30s
+                        print(f"   [Slide {slide_num}] {state}... ({attempt * POLL_INTERVAL}s)")
+                    time.sleep(POLL_INTERVAL)
+
+                else:
+                    time.sleep(POLL_INTERVAL)
+
+            except Exception as e:
+                print(f"   [Slide {slide_num}] ⚠️  Error polling: {e}")
+                time.sleep(POLL_INTERVAL)
+
+        print(f"   [Slide {slide_num}] ❌ Timeout ({MAX_POLL_ATTEMPTS * POLL_INTERVAL}s)")
+        return None
+
+    with ThreadPoolExecutor(max_workers=len(pending_tasks)) as executor:
+        futures = {}
+        for slide_num, info in pending_tasks.items():
+            future = executor.submit(process_slide, slide_num, info)
+            futures[future] = (slide_num, info)
+
+        for future in as_completed(futures):
+            slide_num, info = futures[future]
+            image_url = future.result()
+
+            if not image_url:
+                print(f"   ❌ Slide {slide_num} - no se pudo generar")
+                continue
+
+            output_filename = f"carousel-{slide_num:02d}.png"
+            output_path = carousel_dir / output_filename
+
+            if download_image(image_url, output_path):
+                print(f"   ✅ Slide {slide_num} - guardado: {output_filename}")
+                slides_generated.append({
+                    "id": slide_num,
+                    "type": info['slide_type'],
+                    "title": info['slide']['title'],
+                    "filename": output_filename,
+                    "success": True,
+                    "with_asset": info['entity']
+                })
+            else:
+                print(f"   ❌ Slide {slide_num} - error descargando imagen")
+
+    slides_generated.sort(key=lambda x: x['id'])
 
     # Generar assets guide
     print("\nGenerando guia de assets...")
@@ -1379,24 +1485,24 @@ def main():
     print("Generando manifest...")
     generate_manifest(bundle_id, carousel_dir, slides_generated)
 
-    # Copiar a Google Drive
-    print("\nCopiando a Google Drive...")
-    copy_to_google_drive(bundle_id, carousel_dir)
+    # Copiar a Google Drive (opcional)
+    if GOOGLE_DRIVE_CAROUSEL and GOOGLE_DRIVE_CAROUSEL.exists():
+        print("\nCopiando a Google Drive...")
+        copy_to_google_drive(bundle_id, carousel_dir)
 
     # Reporte final
     elapsed_time = time.time() - start_time
     minutes = int(elapsed_time // 60)
     seconds = int(elapsed_time % 60)
 
-    print(f"\n" + "="*60)
+    print(f"\n{'='*60}")
     print(f"CARRUSEL GENERADO EXITOSAMENTE")
-    print(f"="*60)
+    print(f"{'='*60}")
     print(f"\nUbicacion: {carousel_dir}")
-    print(f"Imagenes: {len(slides_generated)} slides generados")
-    print(f"Google Drive: CAROUSEL/{bundle_id}/")
+    print(f"Imagenes: {len(slides_generated)}/{len(pending_tasks)} slides generados")
     print(f"Costo estimado: ~${len(slides_generated) * 0.10:.2f}")
-    print(f"Tiempo: {minutes}m {seconds}s")
-    print(f"\n" + "="*60 + "\n")
+    print(f"Tiempo: {minutes}m {seconds}s (generacion en paralelo)")
+    print(f"\n{'='*60}\n")
 
 
 if __name__ == "__main__":
